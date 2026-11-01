@@ -1,5 +1,7 @@
 # posthog-ios: events queued before `optOut()` are still sent after it
 
+Reported upstream: [PostHog/posthog-ios#1003](https://github.com/PostHog/posthog-ios/issues/1003)
+
 `optOut()` stops new captures, but events already in the SDK's on-disk queue are still uploaded afterwards: the queue's flushes (its timer, the reachability callback, `flush()`) check only connectivity and retry backoff, never opt-out, and there's no public API to drop the queue. So events a user generated before opting out, such as while offline, go to PostHog after they opt out, as soon as the device is back online or on the next launch. Each one carries the user's `distinct_id`.
 
 ## Reproduction
