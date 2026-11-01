@@ -9,7 +9,11 @@ final class OptOutQueueTests: XCTestCase {
     override func setUp() {
         projectToken = "phc_repro_\(UUID().uuidString)"
         StubServer.online = true
+        posthog = launch()
+        posthog.identify("user-123")
+    }
 
+    private func launch() -> PostHogSDK {
         let config = PostHogConfig(projectToken: projectToken, host: "https://stub.invalid")
         let session = URLSessionConfiguration.default
         session.protocolClasses = [StubServer.self]
@@ -18,8 +22,7 @@ final class OptOutQueueTests: XCTestCase {
         config.flushIntervalSeconds = 1
         config.captureApplicationLifecycleEvents = false
         config.preloadFeatureFlags = false
-        posthog = PostHogSDK.with(config)
-        posthog.identify("user-123")
+        return PostHogSDK.with(config)
     }
 
     override func tearDown() {
@@ -54,6 +57,24 @@ final class OptOutQueueTests: XCTestCase {
         StubServer.online = true
 
         runMainRunLoop(seconds: 10) { !self.delivered.isEmpty }
+
+        XCTAssertEqual(delivered, [], "sent after optOut()")
+    }
+
+    /// A user opts out offline and quits; the next launch, online, sends the earlier events.
+    func testEventsQueuedBeforeOptOutAreNotSentOnNextLaunch() {
+        StubServer.online = false
+        posthog.capture("captured offline before opt-out")
+        posthog.optOut()
+        posthog.close()
+        runMainRunLoop(seconds: 5) { StubServer.failedBatches(for: self.projectToken) > 0 }
+        XCTAssertGreaterThan(StubServer.failedBatches(for: projectToken), 0, "close() never tried to send while offline")
+
+        StubServer.online = true
+        posthog = launch()
+        XCTAssertTrue(posthog.isOptOut())
+
+        runMainRunLoop(seconds: 5) { !self.delivered.isEmpty }
 
         XCTAssertEqual(delivered, [], "sent after optOut()")
     }
